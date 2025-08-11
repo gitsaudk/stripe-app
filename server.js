@@ -1,0 +1,236 @@
+const express = require('express');
+const Stripe = require('stripe');
+const cors = require('cors');
+
+const app = express();
+const stripe = Stripe('sk_test_51RirOc4haTggHznkUwItRZrwWuDAKAwZmj1wNlEtlF8rmm8w4cNzoP1K1usBCte63EfINZW2wHcTaVhB7qJt6Zce001L78rJgN'); // TODO: Replace with your Stripe secret key
+
+app.use(express.json());
+app.use(cors());
+
+// Create a Stripe Connect Account
+app.post('/create-connect-account', async (req, res) => {
+    const { email, type } = req.body;
+    try {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        country: 'US',
+        email,
+        capabilities: { 
+          transfers: { requested: true },
+          card_payments: { requested: true }
+        },
+        business_type: type === 'business' ? 'company' : 'individual',
+      });
+      res.json({ accountId: account.id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+});
+
+// Generate an onboarding link for a Connect Account
+app.post('/onboard-connect-account', async (req, res) => {
+  const { accountId } = req.body;
+  console.log("req.body", req.body)
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: 'http://localhost:59370/reauth',
+      return_url: 'http://localhost:59370/return',
+      type: 'account_onboarding',
+    });
+    res.json({ url: accountLink.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create checkout session to add funds to platform
+app.post('/create-checkout-session', async (req, res) => {
+  const { amount = 2000 } = req.body; // Default $20.00 or custom amount
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: { name: 'Deposit Funds' },
+            unit_amount: amount, // amount in cents
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: 'http://localhost:59370/success',
+      cancel_url: 'http://localhost:59370/cancel',
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **NEW: Transfer funds to a specific connected account**
+app.post('/transfer-funds', async (req, res) => {
+  const { amount, connectedAccountId, description = 'Platform transfer' } = req.body;
+  
+  if (!amount || !connectedAccountId) {
+    return res.status(400).json({ error: 'Amount and connectedAccountId are required' });
+  }
+
+  try {
+    // First, verify the connected account exists and is active
+    const account = await stripe.accounts.retrieve(connectedAccountId);
+    
+    if (!account.charges_enabled || !account.transfers_enabled) {
+      return res.status(400).json({ 
+        error: 'Connected account is not fully activated for transfers' 
+      });
+    }
+
+    // Create a transfer to the connected account
+    const transfer = await stripe.transfers.create({
+      amount: amount * 100, // Convert to cents
+      currency: 'usd',
+      destination: connectedAccountId,
+      description: description,
+      metadata: {
+        transfer_type: 'platform_to_user',
+        timestamp: new Date().toISOString()
+      }
+    });
+
+    res.json({ 
+      success: true,
+      transfer: {
+        id: transfer.id,
+        amount: transfer.amount / 100,
+        destination: transfer.destination,
+        created: transfer.created
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **NEW: Get connected account balance**
+app.get('/account-balance/:accountId', async (req, res) => {
+  const { accountId } = req.params;
+  
+  try {
+    const balance = await stripe.balance.retrieve({
+      stripeAccount: accountId
+    });
+    
+    res.json({ 
+      available: balance.available,
+      pending: balance.pending,
+      accountId: accountId
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **UPDATED: Proper payout implementation**
+app.post('/create-payout', async (req, res) => {
+  const { amount, connectedAccountId, method = 'standard' } = req.body;
+  
+  if (!amount || !connectedAccountId) {
+    return res.status(400).json({ error: 'Amount and connectedAccountId are required' });
+  }
+
+  try {
+    // Check account balance first
+    const balance = await stripe.balance.retrieve({
+      stripeAccount: connectedAccountId
+    });
+
+    const availableAmount = balance.available.reduce((sum, bal) => sum + bal.amount, 0);
+    const requestedAmount = amount * 100; // Convert to cents
+
+    if (availableAmount < requestedAmount) {
+      return res.status(400).json({ 
+        error: `Insufficient funds. Available: $${availableAmount/100}, Requested: $${amount}` 
+      });
+    }
+
+    // Create payout to connected account's bank
+    const payout = await stripe.payouts.create({
+      amount: requestedAmount,
+      currency: 'usd',
+      method: method, // 'standard' or 'instant'
+      metadata: {
+        payout_type: 'user_withdrawal',
+        timestamp: new Date().toISOString()
+      }
+    }, {
+      stripeAccount: connectedAccountId
+    });
+
+    res.json({ 
+      success: true,
+      payout: {
+        id: payout.id,
+        amount: payout.amount / 100,
+        status: payout.status,
+        arrival_date: payout.arrival_date,
+        method: payout.method
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **NEW: List all connected accounts**
+app.get('/connected-accounts', async (req, res) => {
+  try {
+    const accounts = await stripe.accounts.list({ limit: 100 });
+    
+    const accountsInfo = accounts.data.map(account => ({
+      id: account.id,
+      email: account.email,
+      created: account.created,
+      charges_enabled: account.charges_enabled,
+      transfers_enabled: account.transfers_enabled,
+      type: account.type
+    }));
+
+    res.json({ accounts: accountsInfo });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **NEW: Get transfer history for an account**
+app.get('/transfer-history/:accountId', async (req, res) => {
+  const { accountId } = req.params;
+  
+  try {
+    // Get transfers TO this account
+    const incomingTransfers = await stripe.transfers.list({
+      destination: accountId,
+      limit: 50
+    });
+
+    // Get payouts FROM this account
+    const payouts = await stripe.payouts.list({
+      limit: 50
+    }, {
+      stripeAccount: accountId
+    });
+
+    res.json({
+      incoming_transfers: incomingTransfers.data,
+      payouts: payouts.data
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const PORT = 4242;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
