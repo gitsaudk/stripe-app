@@ -1,9 +1,15 @@
+require('dotenv').config();
 const express = require('express');
 const Stripe = require('stripe');
 const cors = require('cors');
 
 const app = express();
-const stripe = Stripe('sk_test_51RirOc4haTggHznkUwItRZrwWuDAKAwZmj1wNlEtlF8rmm8w4cNzoP1K1usBCte63EfINZW2wHcTaVhB7qJt6Zce001L78rJgN'); // TODO: Replace with your Stripe secret key
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+  console.error('Missing STRIPE_SECRET_KEY environment variable. Please check your .env file.');
+  process.exit(1);
+}
+const stripe = Stripe(stripeSecretKey);
 
 app.use(express.json());
 app.use(cors());
@@ -35,8 +41,8 @@ app.post('/onboard-connect-account', async (req, res) => {
   try {
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: 'http://localhost:59370/reauth',
-      return_url: 'http://localhost:59370/return',
+      refresh_url: 'http://localhost:4200/reauth',
+      return_url: 'http://localhost:4200/return',
       type: 'account_onboarding',
     });
     res.json({ url: accountLink.url });
@@ -62,8 +68,8 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: 'http://localhost:59370/success',
-      cancel_url: 'http://localhost:59370/cancel',
+      success_url: 'http://localhost:4200/success',
+      cancel_url: 'http://localhost:4200/cancel',
     });
     res.json({ url: session.url });
   } catch (err) {
