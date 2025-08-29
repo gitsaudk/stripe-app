@@ -14,6 +14,12 @@ const stripe = Stripe(stripeSecretKey);
 app.use(express.json());
 app.use(cors());
 
+// Add logging middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 // Create a Stripe Connect Account
 app.post('/create-connect-account', async (req, res) => {
     const { email, type } = req.body;
@@ -53,7 +59,7 @@ app.post('/onboard-connect-account', async (req, res) => {
 
 // Create checkout session to add funds to platform
 app.post('/create-checkout-session', async (req, res) => {
-  const { amount = 2000 } = req.body; // Default $20.00 or custom amount
+  const { amount = 10000 } = req.body; // Default $20.00 or custom amount
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -68,8 +74,8 @@ app.post('/create-checkout-session', async (req, res) => {
         },
       ],
       mode: 'payment',
-      success_url: 'http://localhost:4200/success',
-      cancel_url: 'http://localhost:4200/cancel',
+      success_url: `${process.env.FRONTEND_URL}`,
+      cancel_url: `${process.env.FRONTEND_URL}`,
     });
     res.json({ url: session.url });
   } catch (err) {
@@ -80,6 +86,7 @@ app.post('/create-checkout-session', async (req, res) => {
 // **NEW: Transfer funds to a specific connected account**
 app.post('/transfer-funds', async (req, res) => {
   const { amount, connectedAccountId, description = 'Platform transfer' } = req.body;
+  console.log("req.body", req.body)
   
   if (!amount || !connectedAccountId) {
     return res.status(400).json({ error: 'Amount and connectedAccountId are required' });
@@ -88,8 +95,11 @@ app.post('/transfer-funds', async (req, res) => {
   try {
     // First, verify the connected account exists and is active
     const account = await stripe.accounts.retrieve(connectedAccountId);
+    console.log("account", account)
     
-    if (!account.charges_enabled || !account.transfers_enabled) {
+    if (!account.charges_enabled ||                 // can't accept payments
+      account.capabilities?.transfers !== 'active' || // transfers capability not active
+      !account.payouts_enabled    ) {
       return res.status(400).json({ 
         error: 'Connected account is not fully activated for transfers' 
       });
@@ -106,7 +116,7 @@ app.post('/transfer-funds', async (req, res) => {
         timestamp: new Date().toISOString()
       }
     });
-
+    console.log("transfer", transfer)
     res.json({ 
       success: true,
       transfer: {
@@ -136,6 +146,50 @@ app.get('/account-balance/:accountId', async (req, res) => {
       accountId: accountId
     });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// **NEW: Delete a specific connected account**
+app.delete('/delete-account/:accountId', async (req, res) => {
+  console.log('DELETE request received for accountId:', req.params.accountId);
+  const { accountId } = req.params;
+  
+  if (!accountId) {
+    return res.status(400).json({ error: 'Account ID is required' });
+  }
+
+  try {
+    // First verify the account exists
+    const account = await stripe.accounts.retrieve(accountId);
+    
+    // Check if account has any pending balances
+    const balance = await stripe.balance.retrieve({
+      stripeAccount: accountId
+    });
+    
+    const totalAvailable = balance.available.reduce((sum, bal) => sum + bal.amount, 0);
+    const totalPending = balance.pending.reduce((sum, bal) => sum + bal.amount, 0);
+    
+    if (totalAvailable > 0 || totalPending > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete account with remaining balance. Available: $${totalAvailable/100}, Pending: $${totalPending/100}. Please withdraw all funds first.` 
+      });
+    }
+
+    // Delete the account
+    const deletedAccount = await stripe.accounts.del(accountId);
+    
+    res.json({ 
+      success: true,
+      deleted: deletedAccount.deleted,
+      accountId: accountId,
+      message: 'Account successfully deleted'
+    });
+  } catch (err) {
+    if (err.code === 'resource_missing') {
+      return res.status(404).json({ error: 'Account not found' });
+    }
     res.status(500).json({ error: err.message });
   }
 });

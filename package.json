@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "server": "node server.js",
+    "test-api": "node test-api.js",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
@@ -20,10 +21,13 @@
     "@angular/router": "^19.2.0",
     "@stripe/stripe-js": "^7.8.0",
     "@tailwindcss/vite": "^4.1.11",
+    "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "ngx-scrollbar": "^18.0.0",
     "rxjs": "~7.8.0",
+    "sqlite3": "^5.1.6",
     "stripe": "^18.4.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.15.0"

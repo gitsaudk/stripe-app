@@ -1,8 +1,9 @@
-<div class="container">
-  <h1 class="bg-amber-50 text-blue-500 text-center text-2xl font-bold">Stripe Connect Fund Management</h1>
+<div class="container flex flex-col gap-4">
+  <h1 class="bg-purple-100 text-blue-500 text-center text-2xl font-bold">ExpertsHub Fund Management</h1>
 
   
   <!-- Create New Connected Account -->
+   <div class="grid">
   <div class="container">
     <h2 class="section-title">👤 Create New Connected Account</h2>
     <div class="form-group">
@@ -37,9 +38,10 @@
       Add funds to your platform account (these can later be transferred to
       connected accounts)
     </p>
-    <button (click)="deposit()">Deposit $20 to Platform</button>
+    <button (click)="deposit()">Deposit $100 to Platform</button>
     <div *ngIf="successMsg" class="success">{{ successMsg }}</div>
   </div>
+</div>
   <!-- Connected Accounts List & Management -->
   <div class="grid">
     <!-- Account Selection -->
@@ -49,8 +51,8 @@
         No connected accounts found. Create one above to get started.
       </div>
 
-      <div *ngFor="let account of connectedAccounts" class="account-list">
-        <div
+      <div class="account-list">
+        <div *ngFor="let account of connectedAccounts" 
           class="account-item"
           [class.selected]="selectedAccountId === account.id"
           (click)="selectedAccountId = account.id; onAccountSelectionChange()"
@@ -69,14 +71,21 @@
               ><br />
               <small>Type: {{ account.type }}</small>
             </div>
-            <div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
               <span
                 class="status-badge"
-                [class.status-active]="account.transfers_enabled"
-                [class.status-inactive]="!account.transfers_enabled"
+                [class.status-active]="account.charges_enabled"
+                [class.status-inactive]="!account.charges_enabled"
               >
-                {{ account.transfers_enabled ? "Active" : "Pending Setup" }}
+                {{ account.charges_enabled ? "Active" : "Pending Setup" }}
               </span>
+              <button 
+                class="delete-btn" 
+                (click)="deleteAccount(account.id); $event.stopPropagation()"
+                title="Delete Account"
+              >
+                🗑️ Delete
+              </button>
             </div>
           </div>
         </div>
@@ -112,6 +121,7 @@
   </div>
 
   <!-- Transfer Funds Section -->
+  <div class="grid">
   <div class="container">
     <h2 class="section-title">💸 Transfer Funds to Connected Account</h2>
     <div *ngIf="!selectedAccountId" class="info">
@@ -193,4 +203,5 @@
       {{ withdrawMsg }}
     </div>
   </div>
+</div>
 </div>

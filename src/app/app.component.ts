@@ -48,7 +48,7 @@ export class AppComponent implements OnInit {
   
   // Form inputs for creating accounts
   newAccountEmail = '';
-  newAccountType = 'individual';
+  newAccountType = 'CLIENT';
 
   constructor(private http: HttpClient) {}
 
@@ -123,6 +123,48 @@ export class AppComponent implements OnInit {
       });
   }
 
+  // **NEW: Delete a specific connected account**
+  deleteAccount(accountId: string) {
+    if (!accountId) {
+      return;
+    }
+
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete account ${accountId}? This action cannot be undone.`)) {
+      return;
+    }
+
+    this.http.delete(`http://localhost:4242/delete-account/${accountId}`)
+      .subscribe({
+        next: (res: any) => {
+          // If the deleted account was selected, clear selection
+          if (this.selectedAccountId === accountId) {
+            this.selectedAccountId = '';
+            this.currentBalance = null;
+            this.transferMsg = '';
+            this.withdrawMsg = '';
+          }
+          
+          // Reload the accounts list
+          this.loadConnectedAccounts();
+          
+          // Show success message (you could add a dedicated property for this)
+          this.transferMsg = `Account ${accountId} successfully deleted.`;
+          
+          // Clear success message after 5 seconds
+          setTimeout(() => {
+            if (this.transferMsg.includes('successfully deleted')) {
+              this.transferMsg = '';
+            }
+          }, 5000);
+        },
+        error: err => {
+          // Show error message
+          this.transferMsg = `Failed to delete account: ${err.error?.error || 'Unknown error'}`;
+        }
+      });
+  }
+
   // **UPDATED: Proper withdrawal/payout function**
   createPayout() {
     if (!this.selectedAccountId || this.payoutAmount <= 0) {
@@ -175,7 +217,7 @@ export class AppComponent implements OnInit {
             
             // Clear form
             this.newAccountEmail = '';
-            this.newAccountType = 'individual';
+            this.newAccountType = 'FREELANCER';
           },
           error: err => {
             this.onboardingError = err.error?.error || 'Failed to get onboarding link.';
