@@ -1,0 +1,207 @@
+<div class="container flex flex-col gap-4">
+  <h1 class="bg-purple-100 text-blue-500 text-center text-2xl font-bold">ExpertsHub Fund Management</h1>
+
+  
+  <!-- Create New Connected Account -->
+   <div class="grid">
+  <div class="container">
+    <h2 class="section-title">👤 Create New Connected Account</h2>
+    <div class="form-group">
+      <label>Email Address:</label>
+      <input
+      type="email"
+      [(ngModel)]="newAccountEmail"
+      placeholder="user@example.com"
+      />
+    </div>
+    <div class="form-group">
+      <label>Account Type:</label>
+      <select [(ngModel)]="newAccountType">
+        <option value="individual">Freelancer</option>
+        <option value="business">Business</option>
+      </select>
+    </div>
+    <button (click)="createAndOnboardUser()" [disabled]="!newAccountEmail">
+      Create & Onboard Account
+    </button>
+    <div *ngIf="onboardingError" class="error">{{ onboardingError }}</div>
+    <div *ngIf="onboardingUrl" class="success">
+      Onboarding link created!
+      <a [href]="onboardingUrl" target="_blank">Open Link</a>
+    </div>
+  </div>
+  
+  <!-- Platform Deposit Section -->
+  <div class="container">
+    <h2 class="section-title">💰 Add Funds to Platform</h2>
+    <p>
+      Add funds to your platform account (these can later be transferred to
+      connected accounts)
+    </p>
+    <button (click)="deposit()">Deposit $100 to Platform</button>
+    <div *ngIf="successMsg" class="success">{{ successMsg }}</div>
+  </div>
+</div>
+  <!-- Connected Accounts List & Management -->
+  <div class="grid">
+    <!-- Account Selection -->
+    <div class="container">
+      <h2 class="section-title">🏦 Connected Accounts</h2>
+      <div *ngIf="connectedAccounts.length === 0" class="info">
+        No connected accounts found. Create one above to get started.
+      </div>
+
+      <div class="account-list">
+        <div *ngFor="let account of connectedAccounts" 
+          class="account-item"
+          [class.selected]="selectedAccountId === account.id"
+          (click)="selectedAccountId = account.id; onAccountSelectionChange()"
+        >
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            "
+          >
+            <div>
+              <strong>{{ account.email }}</strong
+              ><br />
+              <small>ID: {{ account.id }}</small
+              ><br />
+              <small>Type: {{ account.type }}</small>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+              <span
+                class="status-badge"
+                [class.status-active]="account.charges_enabled"
+                [class.status-inactive]="!account.charges_enabled"
+              >
+                {{ account.charges_enabled ? "Active" : "Pending Setup" }}
+              </span>
+              <button 
+                class="delete-btn" 
+                (click)="deleteAccount(account.id); $event.stopPropagation()"
+                title="Delete Account"
+              >
+                🗑️ Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account Balance -->
+    <div class="container">
+      <h2 class="section-title">💳 Account Balance</h2>
+      <div *ngIf="!selectedAccountId" class="info">
+        Select an account to view balance
+      </div>
+
+      <div *ngIf="selectedAccountId && !currentBalance" class="info">
+        <button (click)="getAccountBalance()">Load Balance</button>
+      </div>
+
+      <div *ngIf="currentBalance" class="balance-card">
+        <h4>Balance for: {{ selectedAccountId }}</h4>
+        <div class="balance-item">
+          <span>Available Balance:</span>
+          <strong>${{ getTotalAvailableBalance() | number : "1.2-2" }}</strong>
+        </div>
+        <div class="balance-item">
+          <span>Pending Balance:</span>
+          <strong>${{ getTotalPendingBalance() | number : "1.2-2" }}</strong>
+        </div>
+        <button (click)="getAccountBalance()" style="background-color: #28a745">
+          Refresh Balance
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transfer Funds Section -->
+  <div class="grid">
+  <div class="container">
+    <h2 class="section-title">💸 Transfer Funds to Connected Account</h2>
+    <div *ngIf="!selectedAccountId" class="info">
+      Please select a connected account above first
+    </div>
+
+    <div *ngIf="selectedAccountId">
+      <div class="form-group">
+        <label>Transfer Amount (USD):</label>
+        <input
+          type="number"
+          [(ngModel)]="transferAmount"
+          min="1"
+          step="0.01"
+          placeholder="100.00"
+        />
+      </div>
+      <div class="form-group">
+        <label>Description (Optional):</label>
+        <input
+          type="text"
+          [(ngModel)]="transferDescription"
+          placeholder="Payment for services"
+        />
+      </div>
+      <button
+        (click)="transferFunds()"
+        [disabled]="!selectedAccountId || transferAmount <= 0"
+      >
+        Transfer ${{ transferAmount || 0 }} to Selected Account
+      </button>
+    </div>
+
+    <div
+      *ngIf="transferMsg"
+      [class]="transferMsg.includes('Successfully') ? 'success' : 'error'"
+    >
+      {{ transferMsg }}
+    </div>
+  </div>
+
+  <!-- Payout/Withdrawal Section -->
+  <div class="container">
+    <h2 class="section-title">🏧 Create Payout (Withdrawal)</h2>
+    <div *ngIf="!selectedAccountId" class="info">
+      Please select a connected account above first
+    </div>
+
+    <div *ngIf="selectedAccountId">
+      <div class="form-group">
+        <label>Payout Amount (USD):</label>
+        <input
+          type="number"
+          [(ngModel)]="payoutAmount"
+          min="1"
+          step="0.01"
+          placeholder="50.00"
+        />
+      </div>
+      <div class="form-group">
+        <label>Payout Speed:</label>
+        <select [(ngModel)]="payoutMethod">
+          <option value="standard">Standard (2-5 business days, free)</option>
+          <option value="instant">Instant (fees apply)</option>
+        </select>
+      </div>
+      <button
+        (click)="createPayout()"
+        [disabled]="!selectedAccountId || payoutAmount <= 0"
+      >
+        Create Payout of ${{ payoutAmount || 0 }}
+      </button>
+    </div>
+
+    <div
+      *ngIf="withdrawMsg"
+      [class]="withdrawMsg.includes('successfully') ? 'success' : 'error'"
+    >
+      {{ withdrawMsg }}
+    </div>
+  </div>
+</div>
+</div>
