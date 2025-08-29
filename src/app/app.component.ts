@@ -71,7 +71,9 @@ export class AppComponent implements OnInit {
 
   // Original deposit function (adds funds to platform)
   deposit() {
-    this.http.post<{ url: string }>('http://localhost:4242/create-checkout-session', {})
+    this.http.post<{ url: string }>('http://localhost:4242/create-checkout-session', {
+      amount: 10000
+    })
       .subscribe(res => {
         window.location.href = res.url;
       });
